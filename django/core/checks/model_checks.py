@@ -5,7 +5,7 @@ import inspect
 import types
 
 from django.apps import apps
-from django.core.checks import Error, Tags, register
+from django.core.checks import Error, Warning, Tags, register
 
 
 @register(Tags.models)
@@ -61,4 +61,35 @@ def check_model_signals(app_configs=None, **kwargs):
                             id='signals.E001'
                         )
                     )
+    return errors
+
+
+@register(Tags.models, Tags.signals)
+def check_migrations(app_configs=None, **kwargs):
+    """
+    Ensure there are no model changes that are not in a migration
+    """
+    # Avoid circular import
+    from django.db.migrations.autodetector import MigrationAutodetector
+    from django.db.migrations.loader import MigrationLoader
+    from django.db.migrations.state import ProjectState
+
+    errors = []
+
+    loader = MigrationLoader(None)
+    autodetector = MigrationAutodetector(
+        loader.project_state(),
+        ProjectState.from_apps(apps),
+    )
+    changes = autodetector.changes(graph=loader.graph)
+    if changes:
+        errors.append(
+            Error(
+                "Your models have changes that are not yet reflected in a "
+                "migration.",
+                hint="Run manage.py makemigrations to make new migrations",
+                id='models.E021'
+            )
+        )
+
     return errors
